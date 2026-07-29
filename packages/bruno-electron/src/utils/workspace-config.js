@@ -703,6 +703,7 @@ module.exports = {
   removeCollectionFromWorkspace,
   setCollectionGitRemote,
   clearCollectionGitRemote,
+  removeCollectionFromWorkspaceGitignore,
   reorderWorkspaceCollections,
   getWorkspaceCollections,
   resolveAndFilterWorkspaceCollections,

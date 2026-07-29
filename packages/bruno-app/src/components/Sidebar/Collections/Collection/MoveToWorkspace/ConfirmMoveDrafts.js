@@ -12,7 +12,7 @@ import StyledWrapper from './StyledWrapper';
 
 const MAX_UNSAVED_REQUESTS_TO_SHOW = 5;
 
-const ConfirmMoveDrafts = ({ onClose, collection, collectionUid }) => {
+const ConfirmMoveDrafts = ({ onClose, collection, collectionUid, targetWorkspaceUid, targetWorkspaceName }) => {
   const dispatch = useDispatch();
   const [isMoving, setIsMoving] = useState(false);
 
@@ -51,9 +51,9 @@ const ConfirmMoveDrafts = ({ onClose, collection, collectionUid }) => {
   }, [currentDrafts, currentTransientDrafts]);
 
   const moveAndClose = () => {
-    dispatch(moveCollectionToWorkspace(collectionUid))
+    dispatch(moveCollectionToWorkspace(collectionUid, targetWorkspaceUid))
       .then(() => {
-        toast.success('Collection moved into workspace');
+        toast.success(targetWorkspaceName ? `Collection moved into ${targetWorkspaceName}` : 'Collection moved into workspace');
         onClose();
       })
       .catch((err) => {
