@@ -71,7 +71,8 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
   const [showShareCollectionModal, setShowShareCollectionModal] = useState(false);
   const [showGenerateDocumentationModal, setShowGenerateDocumentationModal] = useState(false);
   const [showRemoveCollectionModal, setShowRemoveCollectionModal] = useState(false);
-  const [showMoveToWorkspaceModal, setShowMoveToWorkspaceModal] = useState(false);
+  // uid of the workspace picked from the 'Move into' submenu; null when the modal is closed
+  const [moveToWorkspaceTargetUid, setMoveToWorkspaceTargetUid] = useState(null);
   const [showCreateMockServerModal, setShowCreateMockServerModal] = useState(false);
   const [dropType, setDropType] = useState(null);
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
@@ -89,14 +90,20 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
   const handleSelectionClick = useSidebarSelectionClick({ uid: collection.uid, searchText });
   const menuDropdownRef = useRef(null);
 
-  // 'Move into Workspace' is available for collections opened from outside the current workspace.
   const activeWorkspace = useSelector((state) =>
     state.workspaces.workspaces.find((w) => w.uid === state.workspaces.activeWorkspaceUid)
   );
   const workspaces = useSelector((state) => state.workspaces.workspaces);
   const collectionSortOrder = useSelector((state) => state.collections.collectionSortOrder);
   const store = useStore();
-  const isMoveToWorkspaceVisible = isPathExternalToBasePath(activeWorkspace?.pathname, collection.pathname);
+
+  // Destinations offered by the 'Move into' submenu: every other workspace, plus the active one when
+  // the collection currently lives outside it (moving it in is what makes that case meaningful).
+  const moveToWorkspaceTargets = workspaces.filter((workspace) => {
+    if (!workspace.pathname) return false;
+    if (workspace.uid !== activeWorkspace?.uid) return true;
+    return isPathExternalToBasePath(workspace.pathname, collection.pathname);
+  });
 
   const isDragDisabled = isMultiSelected && isCollectionMultiDragDisabled;
   const multiDragItems = isMultiSelected ? multiDragCollections : null;
@@ -514,16 +521,22 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
         await openDevtoolsAndSwitchToTerminal(dispatch, collectionCwd);
       }
     },
-    ...(isMoveToWorkspaceVisible
+    ...(moveToWorkspaceTargets.length > 0
       ? [
           {
             id: 'move-to-workspace',
             leftSection: IconFileArrowRight,
-            label: 'Move into Workspace',
-            testId: 'move-collection-to-workspace',
-            onClick: () => {
-              setShowMoveToWorkspaceModal(true);
-            }
+            label: 'Move into',
+            // ids stay bare uids so the submenu entries read as
+            // `collection-actions-move-to-workspace-<uid>` rather than repeating the trigger's id
+            submenu: moveToWorkspaceTargets.map((workspace) => ({
+              id: workspace.uid,
+              label: workspace.name,
+              ariaLabel: `Move into ${workspace.name}`,
+              onClick: () => {
+                setMoveToWorkspaceTargetUid(workspace.uid);
+              }
+            }))
           }
         ]
       : []),
@@ -554,8 +567,12 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       {showRemoveCollectionModal && (
         <RemoveCollections collectionUid={collection.uid} onClose={() => setShowRemoveCollectionModal(false)} />
       )}
-      {showMoveToWorkspaceModal && (
-        <MoveToWorkspace collectionUid={collection.uid} onClose={() => setShowMoveToWorkspaceModal(false)} />
+      {moveToWorkspaceTargetUid && (
+        <MoveToWorkspace
+          collectionUid={collection.uid}
+          targetWorkspaceUid={moveToWorkspaceTargetUid}
+          onClose={() => setMoveToWorkspaceTargetUid(null)}
+        />
       )}
       {showShareCollectionModal && (
         <ShareCollection collectionUid={collection.uid} onClose={() => setShowShareCollectionModal(false)} />

@@ -3,6 +3,7 @@ import { IconChevronRight, IconChevronLeft } from '@tabler/icons';
 
 const SubMenuItem = ({
   item,
+  testId,
   selectedItemId,
   showTickMark,
   onRootClose,
@@ -51,6 +52,10 @@ const SubMenuItem = ({
     >
       <MenuDropdownComponent
         items={submenuItemsWithClose}
+        // The submenu dropdown clones its trigger and stamps its own data-testid onto it, so it has
+        // to carry the trigger's id or the trigger would fall back to the generic default and become
+        // unaddressable. This also namespaces the submenu's own entries under the trigger.
+        data-testid={`${testId}-${item.id}`}
         placement={submenuTippyPlacement}
         opened={submenuOpen}
         onChange={setSubmenuOpen}

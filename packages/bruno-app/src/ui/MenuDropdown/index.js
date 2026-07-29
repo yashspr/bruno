@@ -420,6 +420,7 @@ const MenuDropdown = forwardRef(({
         <SubMenuItem
           key={item.id}
           item={item}
+          testId={testId}
           selectedItemId={selectedItemId}
           showTickMark={showTickMark}
           onRootClose={() => updateOpenState(false)}

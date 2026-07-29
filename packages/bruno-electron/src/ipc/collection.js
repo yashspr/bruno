@@ -92,7 +92,9 @@ const {
   validateWorkspacePath,
   normalizeCollectionEntry,
   addCollectionToWorkspace,
-  removeCollectionFromWorkspace
+  removeCollectionFromWorkspace,
+  setCollectionGitRemote,
+  removeCollectionFromWorkspaceGitignore
 } = require('../utils/workspace-config');
 
 const environmentSecretsStore = new EnvironmentSecretsStore();
@@ -335,11 +337,20 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
     }
   );
 
-  // move an external collection into the workspace's directory
+  // move a collection's files into a workspace's directory
+  // `sourceWorkspacePath` is the workspace the collection is currently registered in. It defaults
+  // to the destination, which is the "pull an outside collection into this workspace" case; passing
+  // a different one moves the collection across workspaces.
   ipcMain.handle(
     'renderer:move-collection-to-workspace',
-    async (event, { workspacePath, collectionPath, collectionUid, collectionName }) => {
+    async (event, { workspacePath, collectionPath, collectionUid, collectionName, sourceWorkspacePath }) => {
       validateWorkspacePath(workspacePath);
+
+      const resolvedSourceWorkspacePath = sourceWorkspacePath || workspacePath;
+      const isCrossWorkspaceMove = path.normalize(resolvedSourceWorkspacePath) !== path.normalize(workspacePath);
+      if (isCrossWorkspaceMove) {
+        validateWorkspacePath(resolvedSourceWorkspacePath);
+      }
 
       if (!collectionPath || !isDirectory(collectionPath)) {
         throw new Error(`Collection: ${collectionPath} does not exist`);
@@ -425,11 +436,29 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         throw error;
       }
 
-      // remove the stale workspace.yml entry
+      // drop the old entry from the workspace the collection came from
+      let removedCollection = null;
       try {
-        await removeCollectionFromWorkspace(workspacePath, collectionPath);
+        const removal = await removeCollectionFromWorkspace(resolvedSourceWorkspacePath, collectionPath);
+        removedCollection = removal.removedCollection;
       } catch (error) {
         console.error('Error cleaning up old workspace.yml entry after move:', error);
+      }
+
+      // carry the collection's git remote over to its entry in the destination workspace, and take
+      // the now-stale ignore entry out of the source workspace's .gitignore
+      if (removedCollection && removedCollection.remote) {
+        try {
+          await setCollectionGitRemote(workspacePath, newPath, removedCollection.remote);
+        } catch (error) {
+          console.error('Error carrying over git remote after move:', error);
+        }
+
+        try {
+          await removeCollectionFromWorkspaceGitignore(resolvedSourceWorkspacePath, collectionPath);
+        } catch (error) {
+          console.error('Error cleaning up source workspace .gitignore after move:', error);
+        }
       }
 
       // update the recently opened collections store to point at the new location

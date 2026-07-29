@@ -90,7 +90,7 @@ import { each } from 'lodash';
 import { closeAllCollectionTabs, closeTabs as _closeTabs, focusTab, reopenLastClosedTab, setSidebarRevealRequest } from 'providers/ReduxStore/slices/tabs';
 import { restoreCollectionTabs } from 'providers/ReduxStore/slices/mock-server/actions';
 import { clearOpenApiSyncTabState } from 'providers/ReduxStore/slices/openapi-sync';
-import { removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
+import { addCollectionToWorkspace, removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
 import { resolveRequestFilename } from 'utils/common/platform';
 import { interpolateUrl, parsePathParams, splitOnFirst } from 'utils/url/index';
 import { sendCollectionOauth2Request as _sendCollectionOauth2Request } from 'utils/network/index';
@@ -2832,8 +2832,11 @@ export const removeCollection = (collectionUid) => (dispatch, getState) => {
   });
 };
 
-// Move an external collection into the workspace's collections directory
-export const moveCollectionToWorkspace = (collectionUid) => (dispatch, getState) => {
+// Move a collection's files into a workspace's collections directory.
+// `targetWorkspaceUid` defaults to the active workspace, which pulls a collection that lives outside
+// it into it. Passing another workspace moves the collection out of the active workspace and into
+// that one, in which case it is not re-opened here - it shows up when that workspace is switched to.
+export const moveCollectionToWorkspace = (collectionUid, targetWorkspaceUid) => (dispatch, getState) => {
   return new Promise((resolve, reject) => {
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2848,7 +2851,18 @@ export const moveCollectionToWorkspace = (collectionUid) => (dispatch, getState)
       return reject(new Error('No active workspace found'));
     }
 
-    if (!isPathExternalToBasePath(activeWorkspace.pathname, collection.pathname)) {
+    const targetWorkspace = targetWorkspaceUid
+      ? workspaces.workspaces.find((w) => w.uid === targetWorkspaceUid)
+      : activeWorkspace;
+
+    if (!targetWorkspace || !targetWorkspace.pathname) {
+      return reject(new Error('Target workspace not found'));
+    }
+
+    const isMovingIntoActiveWorkspace = targetWorkspace.uid === activeWorkspace.uid;
+
+    // Moving into the workspace the collection already sits inside is a no-op
+    if (isMovingIntoActiveWorkspace && !isPathExternalToBasePath(activeWorkspace.pathname, collection.pathname)) {
       return reject(new Error('Collection is already inside the workspace'));
     }
 
@@ -2856,7 +2870,8 @@ export const moveCollectionToWorkspace = (collectionUid) => (dispatch, getState)
 
     ipcRenderer
       .invoke('renderer:move-collection-to-workspace', {
-        workspacePath: activeWorkspace.pathname,
+        workspacePath: targetWorkspace.pathname,
+        sourceWorkspacePath: activeWorkspace.pathname,
         collectionPath: collection.pathname,
         collectionUid,
         collectionName: collection.name
@@ -2870,7 +2885,7 @@ export const moveCollectionToWorkspace = (collectionUid) => (dispatch, getState)
         await waitForNextTick();
         dispatch(_removeCollection({ collectionUid }));
 
-        if (result?.newPath) {
+        if (result?.newPath && isMovingIntoActiveWorkspace) {
           const openResult = await dispatch(openMultipleCollections([result.newPath], { workspacePath: activeWorkspace.pathname }));
           const reopened = (openResult?.opened || []).some(
             (openedPath) => normalizePath(openedPath) === normalizePath(result.newPath)
@@ -2878,6 +2893,13 @@ export const moveCollectionToWorkspace = (collectionUid) => (dispatch, getState)
           if (!reopened) {
             throw new Error('Collection was moved into the workspace but could not be re-opened. Reload the workspace to access it.');
           }
+        } else if (result?.newPath) {
+          // Keep the destination workspace's collection list in step with its workspace.yml so it
+          // is correct on switch without a reload.
+          dispatch(addCollectionToWorkspace({
+            workspaceUid: targetWorkspace.uid,
+            collection: { name: collection.name, path: result.newPath }
+          }));
         }
         dispatch(ensureActiveTabInCurrentWorkspace());
       })
