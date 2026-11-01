@@ -89,7 +89,9 @@
     "test:benchmark": "playwright test --config=playwright.benchmark.config.ts",
     "lint": "cross-env NODE_OPTIONS=\"--max_old_space_size=4096\" npx eslint",
     "lint:fix": "cross-env NODE_OPTIONS=\"--max_old_space_size=4096\" npx eslint --fix",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:electron:mac:local": "./scripts/build-electron-local.sh",
+    "rebuild:local": "./scripts/rebuild-local.sh"
   },
   "nano-staged": {
     "*.{js,ts,jsx}": [
